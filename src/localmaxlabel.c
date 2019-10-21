@@ -10,6 +10,7 @@
 #ifdef _MSC_VER
  #include <intrin.h>
  #define cast128i(X)  (_mm_castps_si128((X)))
+
  #ifdef __AVX__
   #include <immintrin.h>
   #define cast256i(X)  (_mm256_castps_si256(X))
@@ -28,7 +29,17 @@
    #define cast256i(X)  ((__m256i)(X))
   #endif
  #else
-  #warning "no sse2"
+  #ifdef __ALTIVEC__
+   #include <altivec.h>
+   #include <x86intrin.h>
+   #include <emmintrin.h>
+   #include <xmmintrin.h>
+   
+   #define cast128i(X)  ((__m128i)(X)) 
+   #define pick_sse2
+  #else
+    #warning "no sse2"
+  #endif
  #endif
 #endif
 
@@ -44,6 +55,7 @@
   (B)=(A);            \
   (I)=(J);            \
   }
+
 
 void neighbormax(const float *restrict im,	// input
 		 int32_t * restrict lout,	// output
@@ -167,11 +179,6 @@ void neighbormax_sse2_old(const float *restrict im,	// input
 }
 
 
-#define pick_sse2(A,B,I,J,M)	        \
-  (M) = _mm_cmpgt_ps( (A), (B) );       \
-  (B) = _mm_blendv_ps( (B), (A), (M) ); \
-  (I) = _mm_blendv_ps( (I), (J), (M) ); \
-
 
 
 void neighbormax_sse2(const float *restrict im,	// input
@@ -206,7 +213,17 @@ void neighbormax_sse2(const float *restrict im,	// input
       for (k = 2; k < 10; k++) {
 	ik  = _mm_add_ps(ik, one );
 	mxq = _mm_loadu_ps(&im[p + o[k]]);
+#ifdef __ALTIVEC___
+	__vector float vsx_msk = vec_cmpgt((__vector float) mxq, (__vector float) mxp);
+	mxp = (__m128) vec_sel((__vector float) mxp, (__vector float) mxq); 
+	iqp = (__m128) vec_sel((__vector float) iqp, (__vector float) ik); 
+//  (M) = _mm_cmpgt_ps( (A), (B) );       \
+//  (B) = _mm_blendv_ps( (B), (A), (M) ); \
+//  (I) = _mm_blendv_ps( (I), (J), (M) ); \
+
+#else
 	pick_sse2( mxq,  mxp, iqp, ik, msk);
+#endif
       }			// k neighbors
       // Write results (note epi16 is sse2)
       _mm_stream_si32( (int*) &l[p], _mm_cvtsi128_si32(_mm_shuffle_epi8( _mm_cvtps_epi32( iqp ), smsk)));
